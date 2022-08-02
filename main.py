@@ -40,9 +40,10 @@ def find_articles(categories, category, keyword, count):
 
 		for el in articles:
 			title_el = el.select(".tm-article-snippet__title-link")[0]
-			title = title_el.text
+			title = title_el.text.lower()
 			title_link = title_el['href']
 
+			keyword = keyword.lower()
 			if (f" {keyword} " in title
 					or f"-{keyword}-" in title 
 					or f" {keyword}-" in title 
