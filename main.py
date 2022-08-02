@@ -1,61 +1,63 @@
-from bs4 import BeautifulSoup
 import requests
+from requests.exceptions import MissingSchema
+from bs4 import BeautifulSoup
 
 from aiogram import Bot, types
 from aiogram.dispatcher import Dispatcher
 from aiogram.utils import executor
 
-import os
 
-
-def find_articles(category, keyword, count):
-	if count < 1:
+def find_articles(categories, category, keyword, count):
+	if int(count) < 1:
 		return -1
 
 	page = 1
 	url = ""
-	parsed_articles = []
+	parsed_articles = {}
+	viewed_articles = []
 
-	match category:
-		case "1":
-			url = "https://habr.com/ru/hub/lib/"
-		case _:
-			pass
+	with open("viewed.txt", "r", encoding="utf8") as file:
+		for line in file:
+			line = line.replace("\n", "")
+			viewed_articles.append(line)
 
-	# if page > 1:
-	# 	url = url + f"/page{page}"
-
-
-	def get_html(page):
-		if page > 1:
-			r = requests.get(url + f"page{page}")
-		else:
-			r = requests.get(url)
-		
-		return BeautifulSoup(r.content, "html.parser")
-
+	url = categories[category].split("|")[1]
 
 	while len(parsed_articles) < count:
-		html = get_html(page)
+		try:
+			if page > 1:
+				r = requests.get(url + f"page{page}")
+			else:
+				r = requests.get(url)
+		except MissingSchema:
+			return -1
+
+		html = BeautifulSoup(r.content, "html.parser")
 		articles = html.select(".tm-article-snippet")
 
 		if len(articles) <= 0:
 			break
 
 		for el in articles:
-			title = el.select(".tm-article-snippet__title-link")[0].text
+			title_el = el.select(".tm-article-snippet__title-link")[0]
+			title = title_el.text
+			title_link = title_el['href']
 
-			if keyword in title:
-				parsed_articles.append(title)
+			if (f" {keyword} " in title
+					or f"-{keyword}-" in title 
+					or f" {keyword}-" in title 
+					or f"-{keyword} " in title ) \
+						and title not in viewed_articles:
+				parsed_articles[title] = title_link
 
 			if len(parsed_articles) == count:
 					break
 
 		page += 1
-		# if page < 5:
-		# 	page += 1
-		# else:
-		# 	return parsed_articles
+
+	with open("viewed.txt", "a", encoding="utf-8") as file:
+		for article_name in parsed_articles:
+			file.write(article_name + "\n")
 
 	return parsed_articles
 
@@ -66,36 +68,52 @@ dp = Dispatcher(bot)
 
 @dp.message_handler(commands=["start", "help"])
 async def start(message : types.message):
-	await message.answer("Укажите данные для поиска в виде КАТЕГОРИЯ:КЛЮЧЕВОЕ СЛОВО:КОЛИЧЕСТВО")
-	await message.answer("""1. Профессиональная литература
-2. Python
-3. Rust
+	await message.answer("Для очистки списка просмотренных статей введите /clear")
 
-		""")
+	categories = "Категории:\n"
+	with open("categories.txt", "r", encoding="utf-8") as file:
+		i = 1
+		for line in file:
+			line = line.split("|")[0]
+			categories += f"{str(i)}. {line}\n"
+			i += 1
+
+	await message.answer(categories)
+	await message.answer("Укажите данные для поиска в виде КАТЕГОРИЯ:КЛЮЧЕВОЕ СЛОВО:КОЛИЧЕСТВО")
+
+
+@dp.message_handler(commands="clear")
+async def clear(message : types.message):
+	with open("viewed.txt", "w") as f:
+		pass
+	await message.answer("Список просмотренных статей очищен")
 
 
 @dp.message_handler()
 async def inputs(message : types.message):
-	category, keyword, count = message.text.split(":")
-	articles = find_articles(category, keyword, int(count))
+	categories = []
 
-	await message.answer("\n".join(articles))
+	with open("categories.txt", "r", encoding="utf-8") as file:
+		for line in file:
+			line = line.replace("\n", "")
+			categories.append(line)
 
-# @dp.message_handler(regexp="^[a-z]")
-# async def choose_keyword(message : types.message):
-# 	keyword = message.text
-# 	await message.answer("Укажите количество статей")
+	try:
+		category, keyword, count = message.text.split(":")
+	except ValueError:
+		pass
+	
+	# "category - 1" is for indexing categories array
+	articles = find_articles(categories, int(category) - 1, keyword, int(count))
 
-
-# @dp.message_handler(regexp="^[0-9]")
-# async def choose_count(message : types.message):
-# 	count = int(message.text)
-# 	articles = find_articles(category, keyword, count)
-
-# 	await message.answer("\n".join(articles))
-
+	if articles != -1:
+		for title, link in articles.items():
+			# link looks like /ru/post/id
+			link = "https://habr.com" + link
+			await message.answer(f"<a href=\"{link}\">{title}</a>\n\n", parse_mode="HTML")
+	else:
+		await message.answer("Запрос некорректен")
+	
 
 if __name__ == "__main__":
 	executor.start_polling(dp, skip_updates=True)
-
-# # find_articles("1", "Rust", 3)

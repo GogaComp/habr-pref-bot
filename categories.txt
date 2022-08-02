@@ -1,0 +1,5 @@
+Профессиональная литература|https://habr.com/ru/hub/lib/
+Python|https://habr.com/ru/hub/python/
+Rust|https://habr.com/ru/hub/rust/
+C|https://habr.com/ru/hub/c/
+История IT|https://habr.com/ru/hub/history/
